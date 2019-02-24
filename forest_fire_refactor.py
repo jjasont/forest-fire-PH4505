@@ -22,20 +22,12 @@ def flatten_clusterdata(cluster_data):
     lists = sorted(cluster_data.items()) # sorted by key, return a list of tuples
 
     cluster_size, y_temp = zip(*lists) # unpack a list of pairs into two tuples
-    cum_radius, number_cluster = zip(*y_temp)
-    radius_cluster = np.array(cum_radius)/np.array(number_cluster)
+    cum_radius, number_cluster, cum_radius_sqr = zip(*y_temp)
     
-    # =========== Primitive Method ==========
-    #    cluster_size = np.zeros(len(cluster_data))
-    #    number_cluster = np.zeros(len(cluster_data))
-    #    radius_cluster = np.zeros(len(cluster_data))
-    #    i = 0
-    #    for key, value in cluster_data.items():
-    #        cluster_size[i] = key
-    #        number_cluster[i] = value[1]
-    #        radius_cluster[i] = value[0]/value[1]
-    #        i += 1
-    # =======================================
+    radius_cluster = np.array(cum_radius)/np.array(number_cluster)
+    radius_cluster_var = np.array(cum_radius_sqr)/np.array(number_cluster) - radius_cluster**2
+    
+    
     return cluster_size, number_cluster, radius_cluster
 
 def neighbour_entry(i, j, forest_size, nn = 'N', pbc = False):
@@ -124,17 +116,23 @@ def cluster_distribution(forest_grid, pbc = False):
                             forest_index.pop(index_nbor, None)
     #cluster_size_dict = {}
     cluster_radius_dict = {}
+    
+    # cluster_radius_dict has the following format
+    # cluster_radius_dict = {cluster_size: 
+    #                       array([sum of radius for all the cluster this size,
+    #                              occurence]) ...}
 
     for key,value in forest_index.items():
         cluster_size = len(value)
         radius = find_radius(value)
+        radius_sqr = radius**2
         
         if cluster_radius_dict.get(cluster_size) is None:
             #cluster_size_dict[cluster_size] = 1
-            cluster_radius_dict[cluster_size] = np.array([radius,1])
+            cluster_radius_dict[cluster_size] = np.array([radius,1, radius_sqr])
         else:
             value_radius = cluster_radius_dict[cluster_size]
-            value_radius += np.array([radius,1])
+            value_radius += np.array([radius,1, radius_sqr])
             cluster_radius_dict[cluster_size] = value_radius
     return cluster_radius_dict
 
