@@ -87,7 +87,7 @@ def cluster_distribution(forest_grid, pbc = False):
                 else:
                     cluster_index[i,j] = min_index
                 
-                if forest_index.get(min_index) == None:
+                if forest_index.get(min_index) is None:
                     forest_index[min_index] = [[i,j]]
                 else:
                     value_temp = forest_index[min_index]
@@ -110,7 +110,7 @@ def cluster_distribution(forest_grid, pbc = False):
     for key,value in forest_index.items():
         cluster_size = len(value)
         radius = find_radius(value)
-        if cluster_radius_dict.get(cluster_size) == None:
+        if cluster_radius_dict.get(cluster_size) is None:
             #cluster_size_dict[cluster_size] = 1
             cluster_radius_dict[cluster_size] = np.array([radius,1])
         else:
