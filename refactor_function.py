@@ -10,13 +10,16 @@ def neighbour_entry(i, j, forest_size, nn = 'N', pbc = False):
         Retrieve the neighbouring element of indicated location
         
         Keyword arguments:
-        i -- the row i of the forest grid, start from 0 (int)
-        j -- the column j of the forest grid, start from 0 (int)
-        forest_size -- the size of forest grid system (np.size())
+          i -- the row i of the forest grid, start from 0 (int)
+          j -- the column j of the forest grid, start from 0 (int)
+          forest_size -- the size of forest grid system (np.size())
         
-        nn -- nearest neighbour used for implementation (default 'N')
-          'N' : Von Neumann neighbour. 4-adjacent cells around the centre
-          'M' : Moore neighbour. All 8 cells surrounding the centre
+          nn -- nearest neighbour used for implementation (default 'N')
+            'N' : Von Neumann neighbour. 4-adjacent cells around the centre
+            'M' : Moore neighbour. All 8 cells surrounding the centre
+            
+        Return:
+          neighbour -- np.array listing down all the neighbouring indices
     """
     list_neighbour = []
     if nn == 'N':
