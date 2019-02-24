@@ -138,17 +138,46 @@ def cluster_distribution(forest_grid, pbc = False):
             cluster_radius_dict[cluster_size] = value_radius
     return cluster_radius_dict
 
-def cell_update(forest_grid, forest_size, p, f, cluster_result=False, pbc = False, immune = 0):
-
+def cell_update(forest_grid, p, f, cluster_result=False, pbc = False, immune = 0):
+    """
+        Update the forest_grid according to the rule of forest-fire
+        
+        Key arguments:
+         forest_grid -- The previous state of the forest
+         p -- Parameter that control tree growth. 
+              Tree will be grown at an empty site if random number 
+              generated is less than p. Range from 0 to 1
+         f -- Parameter that control lightning to struck tree
+              A green tree will start burning if either of its neighbours 
+              is already burning or a random number generated is less than 
+              the lightening parameter f.
+         cluster_result -- Flag for cluster_result request. Use accordingly,
+                           cluster calculation is expensive (default False)
+         pbc -- The flag parameter to use periodic boundary condition. Periodic
+                boundary condition useful to approximate the system on a large
+                (infinite) scale from small system
+                 (default False)
+         immune -- Parameter that control tree resistance. This custom
+                   parameter introduced on the case where given neighbouring
+                   tree are dying due fire/infection yet the tree observed are
+                   not affected due any resistance factor presence such as
+                   wet tree/mutated tree/etc. Range from 0 to 1 (default 0.0)
+         
+    """
     #Forest_grid_temp is used to create the forest grid at next time step.
     forest_grid_temp = forest_grid
+    
+    row_size = np.size(forest_grid, 0)
+    col_size = np.size(forest_grid, 1)
+    forest_size = np.shape(forest_grid)
 
     
     num_tree = 0
     num_empty = 0
     num_fire = 0
-    for i in range(forest_size[0]):
-        for j in range(forest_size[1]):
+    
+    for i in range(row_size):
+        for j in range(col_size):
             if forest_grid_temp[i,j] == FIRE:
                 num_fire += 1
                 forest_grid[i,j] = EMPTY
@@ -261,7 +290,7 @@ def main(forest_size, p, pbf, iteration, \
         # Iteration post-equlibirum
         n_iterate_post_warmup = iterate-warm_up
         if iterate > warm_up:
-            num_tree, num_empty, num_fire, forest_grid, cluster_radius_dict = cell_update(forest_grid, forest_size, p, f, cluster_result=True, pbc = pbc, immune = immune)
+            num_tree, num_empty, num_fire, forest_grid, cluster_radius_dict = cell_update(forest_grid, p, f, cluster_result=True, pbc = pbc, immune = immune)
             for key, value in cluster_radius_dict.items():
                 value_temp = cluster_radius_dict[key]
                 if cluster_data.get(key) is None:
@@ -271,7 +300,7 @@ def main(forest_size, p, pbf, iteration, \
                     cluster_data[key] = value_cluster_data + value_temp
         else:
             #print('no_clust')
-            num_tree, num_empty, num_fire, forest_grid = cell_update(forest_grid, forest_size, p, f, pbc = pbc, immune = immune)
+            num_tree, num_empty, num_fire, forest_grid = cell_update(forest_grid, p, f, pbc = pbc, immune = immune)
         
         
         trees[n_iterate_post_warmup] = num_tree
