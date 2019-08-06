@@ -2,6 +2,7 @@ import numpy as np
 
 from itertools import product
 from collections import Counter
+from tqdm import tqdm
 
 class ForestFire:
 
@@ -11,7 +12,8 @@ class ForestFire:
                  periodic_boundary_condition=False,
                  immunity_rate=0,
                  warm_up_iteraton_step=200,
-                 nn_type = 'N'):
+                 nn_type = 'N',
+                 cluster_result=False):
         
         assert grid_row_size > 0, "Invalid value for grid_row_size. Only positive value"
         assert grid_col_size > 0, "Invalid value for grid_col_size. Only positive value"
@@ -30,6 +32,7 @@ class ForestFire:
         self.immunity_rate = immunity_rate
         self.warm_up_iteraton_step = warm_up_iteraton_step
         self.nn_type = nn_type
+        self.cluster_result = cluster_result
 
         # Derived Parameter
         self.forest_size = [grid_row_size, grid_col_size]
@@ -64,7 +67,7 @@ class ForestFire:
         num_fire = cell_val_count.get(self.FIRE, 0)
 
         # Work through each cell for update
-        for row, col in product(range(row_size), range(col_size)):
+        for i, (row, col) in tqdm(enumerate(product(range(row_size), range(col_size))), desc='Updating cell', ascii='True'):
             if forest_grid_temp[row, col] == self.FIRE:
                 forest_grid_new[row, col] = self.EMPTY
             elif forest_grid_temp[row, col] == self.EMPTY:
@@ -94,11 +97,11 @@ class ForestFire:
         # Update forest_grid config
         self.forest_grid = forest_grid_new
 
-        if generate_cluster_result:
+        if self.cluster_result:
             cluster_radius_dict = self.cluster_distribution()
-            return num_tree, num_empty, num_fire, forest_grid, cluster_radius_dict
+            return num_tree, num_empty, num_fire, cluster_radius_dict
         else:
-            return num_tree, num_empty, num_fire
+            return num_tree, num_empty, num_fire, {}
 
 
         
@@ -145,13 +148,115 @@ class ForestFire:
         return neighbour
 
     def cluster_distribution(self):
-        return
+        """
+        Build cluster index and retrieve the distribution of the clusters
+        
+        Note: 
+        - Not fully implementing pbc due to vagueness of cluster definition
+          in pbc realm
+          Example:
+              [1, 1, 0, 1]
+              [1, 0, 0, 0]
+              [0, 1, 1, 0]
+              [1, 0, 0, 1]
+              
+              with Von Neumann Nearest Neighbour
+              non-PBC case: 5 cluster, use row_index and col_index directly 
+                             to calculate cluster radius
+              PBC case: 2 cluster, to calculate radius for cluster on the edge, 
+                          need to shift until no cluster located across 
+                          periodic boundary i.e.
+                          
+             [1, 1, 0, 1]     [1, 1, 1, 0]     [1, 1, 0, 0]
+             [1, 0, 0, 0]     [0, 1, 0, 0]     [1, 1, 1, 0]
+             [0, 1, 1, 0]  >  [0, 0, 1, 1]  >  [0, 1, 0, 0]
+             [1, 0, 0, 1]     [1, 1, 0, 0]     [0, 0, 1, 1]
+             
+             Hence, indexing cluster in PBC case a little intricate
+                          
+              
+        """
+        print("Processing cluster")
+        
+        # Initialize cluster_index array
+        row_size = self.grid_row_size
+        col_size = self.grid_col_size
+        forest_size = self.forest_size
+        cluster_index = np.full(forest_size, np.inf)
+        
+        # Initialize parameter used for cluster indexing
+        # First cluster found assigned indexation=0
+        # forest_index will list down the cell coordinate belonging to the cluster
+        # forest_index = {cluster_id : [[a,b],[a,b+1],[a,b-1],[a-1,b]] ...}
+        cluster_indices_coordinates = {}
+        indexation = 0
+        
+        for i, (row, col) in tqdm(enumerate(product(range(row_size), range(col_size))), desc='Calculting cluster cell', ascii='True'):
+            if self.forest_grid[row, col] == self.TREE:
+                nbors = self.neighbour_entry(row, col)
+
+                # Determined cluster indexation of neighbor
+                clust_nbors = cluster_index[(nbors[:,0],nbors[:,1])]
+                min_index = min(clust_nbors) # retrieve minimum index
+                
+                if np.isinf(min_index): # assign index if minimum is infinity
+                    cluster_index[row, col] = indexation
+                    min_index = indexation
+                    indexation += 1
+                else:
+                    cluster_index[row, col] = min_index
+                
+                # Store Cluster Index and Corresponding Coordinate
+                if cluster_indices_coordinates.get(min_index) is None:  # New Index, record first coordinate
+                    cluster_indices_coordinates[min_index] = [[row, col]]
+                else:  # Existing index, add new coordinate
+                    cluster_indices_coordinates[min_index] += [[row, col]]
+                
+                # Check for the cluster index of neighbouring cell 
+                for nbor_coor, clust_index_nbor in zip(nbors, clust_nbors):
+                    # Assign smallest cluster index if there exist neighbouring cell of smaller index cluster
+                    if (self.forest_grid[nbor_coor[0], nbor_coor[1]] == self.TREE) & (clust_index_nbor > min_index):
+                        cluster_index[nbor_coor[0], nbor_coor[1]] = min_index
+
+                        if cluster_indices_coordinates.get(clust_index_nbor) is not None:  # check if there is a set of coordinates with the larger index
+                            for member in cluster_indices_coordinates[clust_index_nbor]:
+                                cluster_index[member[0],member[1]] = min_index
+                            cluster_indices_coordinates[min_index] += cluster_indices_coordinates[clust_index_nbor]  # combine larger index cluster to the smaller one
+                            cluster_indices_coordinates.pop(clust_index_nbor, None)  # remove larger cluster index
+
+        cluster_radius_dict = {}
+        
+        # cluster_radius_dict has the following format
+        # cluster_radius_dict = {cluster_size: 
+        #                       array([sum of radius for all the cluster this size,
+        #                              occurence]) ...}
+
+        for cluster_index, cluster_coordinates in cluster_indices_coordinates.items():
+            cluster_size = len(cluster_coordinates)
+            radius = self.find_cluster_radius(cluster_coordinates)
+            radius_sqr = radius**2
+            
+            if cluster_radius_dict.get(cluster_size) is None:
+                #cluster_size_dict[cluster_size] = 1
+                cluster_radius_dict[cluster_size] = np.array([radius,1, radius_sqr])
+            else:
+                value_radius = cluster_radius_dict[cluster_size]
+                value_radius += np.array([radius,1, radius_sqr])
+                cluster_radius_dict[cluster_size] = value_radius
+        return cluster_radius_dict
+
+    def find_cluster_radius(self, cluster_list):
+        x_var,y_var = np.var(cluster_list,axis=0)
+        radius = np.sqrt(x_var+y_var)
+        return radius
 
 
 if __name__ == '__main__':
-    a = ForestFire(5, 5, 0.5, 10, 1000)
+    import sys
+    a = ForestFire(500, 500, 0.5, 10, 1000, cluster_result=True)
     print(a.forest_grid)
-    num_tree, num_empty, num_fire = a.cell_update()
+    print(sys.getsizeof(a.forest_grid))
+    num_tree, num_empty, num_fire, cluster = a.cell_update()
     print(a.forest_grid)
-    num_tree, num_empty, num_fire = a.cell_update()
-    print(a.forest_grid)
+    print(num_tree, num_empty, num_fire, cluster)
+    print(sys.getsizeof(a.forest_grid))
